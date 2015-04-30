@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 # -*- coding: UTF-8 -*-
-=======
->>>>>>> 642b4b5c6a7fc81fa6c6915b399c94166bcc3740
 # Author: Andreas Christian Mueller <t3kcit@gmail.com>
 #
 # (c) 2012
@@ -150,12 +147,6 @@ class WordCloud(object):
     def fit_words(self, frequencies):
         """Create a word_cloud from words and frequencies.
 
-<<<<<<< HEAD
-    def fit_words(self, frequencies):
-        """Create a word_cloud from words and frequencies.
-
-=======
->>>>>>> 642b4b5c6a7fc81fa6c6915b399c94166bcc3740
         Alias to generate_from_frequencies.
 
         Parameters
@@ -252,7 +243,6 @@ class WordCloud(object):
             x, y = np.array(result) + self.margin // 2
             # actually draw the text
             #draw.text((y, x), word, fill="white")
-            # support utf-8
             draw.text((y, x), unicode(word, 'utf-8'), fill="white")
             positions.append((x, y))
             orientations.append(orientation)
@@ -309,12 +299,7 @@ class WordCloud(object):
         d = {}
         flags = (re.UNICODE if sys.version < '3' and type(text) is unicode
                  else 0)
-<<<<<<< HEAD
-        # for word in re.findall(r"\w[\w']*", text, flags=flags):
         for word in re.findall(r"\S[\S']*", text, flags=flags):
-=======
-        for word in re.findall(r"\w[\w']*", text, flags=flags):
->>>>>>> 642b4b5c6a7fc81fa6c6915b399c94166bcc3740
             if word.isdigit():
                 continue
 
@@ -406,8 +391,7 @@ class WordCloud(object):
                                                        orientation=orientation)
             draw.setfont(transposed_font)
             pos = (position[1] * self.scale, position[0] * self.scale)
-            # draw.text(pos, word, fill=color)
-            # support utf-8
+            #draw.text(pos, word, fill=color)
             draw.text(pos, unicode(word, 'utf-8'), fill=color)
         return img
 
