@@ -1,10 +1,12 @@
 # -*- coding: UTF-8 -*-
-# Author: Andreas Christian Mueller <amueller@ais.uni-bonn.de>
+# Author: Andreas Christian Mueller <t3kcit@gmail.com>
+#
 # (c) 2012
 # Modified by: Paul Nechifor <paul@nechifor.net>
 #
 # License: MIT
 
+import warnings
 from random import Random
 import os
 import re
@@ -24,7 +26,8 @@ STOPWORDS = set([x.strip() for x in open(os.path.join(os.path.dirname(__file__),
                                                       'stopwords')).read().split('\n')])
 
 
-def random_color_func(word, font_size, position, orientation, random_state=None):
+def random_color_func(word=None, font_size=None, position=None,
+                      orientation=None, font_path=None, random_state=None):
     """Random hue color generation.
 
     Default coloring method. This just picks a random hue with value 80% and
@@ -66,10 +69,16 @@ class WordCloud(object):
         The ratio of times to try horizontal fitting as opposed to vertical.
 
     mask : nd-array or None (default=None)
-        If not None, gives a binary mask on where to draw words. All zero
-        entries will be considered "free" to draw on, while all non-zero
-        entries will be deemed occupied. If mask is not None, width and height will be
-        ignored and the shape of mask will be used instead.
+        If not None, gives a binary mask on where to draw words. If mask is not
+        None, width and height will be ignored and the shape of mask will be
+        used instead. All white (#FF or #FFFFFF) entries will be considerd
+        "masked out" while other entries will be free to draw on. [This
+        changed in the most recent version!]
+
+    scale : float (default=1)
+        Scaling between computation and drawing. For large word-cloud images,
+        using scale instead of larger canvas size is significantly faster, but
+        might lead to a coarser fit for the words.
 
     max_words : number (default=200)
         The maximum number of words.
@@ -86,12 +95,21 @@ class WordCloud(object):
 
     Attributes
     ----------
-    words_ : list of tuples (string, float)
+    ``words_``: list of tuples (string, float)
         Word tokens with associated frequency.
 
-    layout_ : list of tuples (string, int, (int, int), int, color))
+    ``layout_`` : list of tuples (string, int, (int, int), int, color))
         Encodes the fitted word cloud. Encodes for each word the string, font
         size, position, orientation and color.
+
+    Notes
+    -----
+    Larger canvases with make the code significantly slower. If you need a large
+    word cloud, try a lower canvas size, and set the scale parameter.
+
+    The algorithm might give more weight to the ranking of the words
+    than their actual frequencies, depending on the ``max_font_size`` and the
+    scaling heuristic.
     """
 
     def __init__(self, font_path=None, width=400, height=200, margin=5,
@@ -121,44 +139,60 @@ class WordCloud(object):
             max_font_size = height
         self.max_font_size = max_font_size
 
-    def fit_words(self, words):
-        """Generate the positions for words.
+    def fit_words(self, frequencies):
+        """Create a word_cloud from words and frequencies.
+
+        Alias to generate_from_frequencies.
 
         Parameters
         ----------
-        words : array of tuples
+        frequencies : array of tuples
             A tuple contains the word and its frequency.
 
         Returns
         -------
-        layout_ : list of tuples (string, int, (int, int), int, color))
-            Encodes the fitted word cloud. Encodes for each word the string, font
-            size, position, orientation and color.
+        self
+        """
+        return self.generate_from_frequencies(frequencies)
 
-        Notes
-        -----
-        Larger canvases with make the code significantly slower. If you need a large
-        word cloud, run this function with a lower canvas size, and draw it with a
-        larger scale.
+    def generate_from_frequencies(self, frequencies):
+        """Create a word_cloud from words and frequencies.
 
-        In the current form it actually just uses the rank of the counts, i.e. the
-        relative differences don't matter. Play with setting the font_size in the
-        main loop for different styles.
+        Parameters
+        ----------
+        frequencies : array of tuples
+            A tuple contains the word and its frequency.
+
+        Returns
+        -------
+        self
+
         """
         if self.random_state is not None:
             random_state = self.random_state
         else:
             random_state = Random()
 
-        if len(words) <= 0:
+        if len(frequencies) <= 0:
             print("We need at least 1 word to plot a word cloud, got %d."
-                  % len(words))
+                  % len(frequencies))
 
         if self.mask is not None:
-            width = self.mask.shape[1]
-            height = self.mask.shape[0]
+            mask = self.mask
+            width = mask.shape[1]
+            height = mask.shape[0]
+            if mask.dtype.kind == 'f':
+                warnings.warn("mask image should be unsigned byte between 0 and"
+                              " 255. Got a float array")
+            if mask.ndim == 2:
+                boolean_mask = mask == 255
+            elif mask.ndim == 3:
+                # if all channels are white, mask out
+                boolean_mask = np.all(mask[:, :, :3] == 255, axis=-1)
+            else:
+                raise ValueError("Got mask of invalid shape: %s" % str(mask.shape))
             # the order of the cumsum's is important for speed ?!
-            integral = np.cumsum(np.cumsum(self.mask, axis=1), axis=0).astype(np.uint32)
+            integral = np.cumsum(np.cumsum(boolean_mask * 255, axis=1), axis=0).astype(np.uint32)
         else:
             height, width = self.height, self.width
             integral = np.zeros((height, width), dtype=np.uint32)
@@ -172,7 +206,7 @@ class WordCloud(object):
         font_size = self.max_font_size
 
         # start drawing grey image
-        for word, count in words:
+        for word, count in frequencies:
             # alternative way to set the font size
             if not self.ranks_only:
                 font_size = min(font_size, int(100 * np.log(count + 100)))
@@ -202,21 +236,23 @@ class WordCloud(object):
                 break
 
             x, y = np.array(result) + self.margin // 2
-
             # actually draw the text
+            #draw.text((y, x), word, fill="white")
             # support utf-8
             draw.text((y, x), unicode(word, 'utf-8'), fill="white")
-            # draw.text((y, x), word, fill="white")
             positions.append((x, y))
             orientations.append(orientation)
             font_sizes.append(font_size)
-            colors.append(self.color_func(word, font_size, (x, y), orientation,
-                                          random_state=random_state))
+            colors.append(self.color_func(word, font_size=font_size,
+                                          position=(x, y),
+                                          orientation=orientation,
+                                          random_state=random_state,
+                                          font_path=self.font_path))
             # recompute integral image
             if self.mask is None:
                 img_array = np.asarray(img_grey)
             else:
-                img_array = np.asarray(img_grey) + self.mask
+                img_array = np.asarray(img_grey) + boolean_mask
             # recompute bottom right
             # the order of the cumsum's is important for speed ?!
             partial_integral = np.cumsum(np.cumsum(img_array[x:, y:], axis=1),
@@ -234,8 +270,8 @@ class WordCloud(object):
 
             integral[x:, y:] = partial_integral
 
-        self.layout_ = list(zip(words, font_sizes, positions, orientations, colors))
-        return self.layout_
+        self.layout_ = list(zip(frequencies, font_sizes, positions, orientations, colors))
+        return self
 
     def process_text(self, text):
         """Splits a long text into words, eliminates the stopwords.
@@ -250,7 +286,6 @@ class WordCloud(object):
         words : list of tuples (string, float)
             Word tokens with associated frequency.
 
-
         Notes
         -----
         There are better ways to do word tokenization, but I don't want to
@@ -258,8 +293,9 @@ class WordCloud(object):
         """
 
         d = {}
-        flags = re.UNICODE if sys.version < '3' and \
-                                type(text) is unicode else 0
+        flags = (re.UNICODE if sys.version < '3' and type(text) is unicode
+                 else 0)
+        # for word in re.findall(r"\w[\w']*", text, flags=flags):
         for word in re.findall(r"\S[\S']*", text, flags=flags):
             if word.isdigit():
                 continue
@@ -304,7 +340,7 @@ class WordCloud(object):
 
         return words
 
-    def generate(self, text):
+    def generate_from_text(self, text):
         """Generate wordcloud from text.
 
         Calls process_text and fit_words.
@@ -317,8 +353,21 @@ class WordCloud(object):
         self.fit_words(self.words_)
         return self
 
+    def generate(self, text):
+        """Generate wordcloud from text.
+
+        Alias to generate_from_text.
+
+        Calls process_text and fit_words.
+
+        Returns
+        -------
+        self
+        """
+        return self.generate_from_text(text)
+
     def _check_generated(self):
-        """Check if layout_ was computed, otherwise raise error."""
+        """Check if ``layout_`` was computed, otherwise raise error."""
         if not hasattr(self, "layout_"):
             raise ValueError("WordCloud has not been calculated, call generate first.")
 
@@ -333,18 +382,14 @@ class WordCloud(object):
         img = Image.new("RGB", (width * self.scale, height * self.scale), self.background_color)
         draw = ImageDraw.Draw(img)
         for (word, count), font_size, position, orientation, color in self.layout_:
-
             font = ImageFont.truetype(self.font_path, font_size * self.scale)
-            print 'font_size: ', font_size
-            print 'self.scale: ', self.scale
             transposed_font = ImageFont.TransposedFont(font,
                                                        orientation=orientation)
-            print transposed_font
             draw.setfont(transposed_font)
             pos = (position[1] * self.scale, position[0] * self.scale)
+            # draw.text(pos, word, fill=color)
             # support utf-8
             draw.text(pos, unicode(word, 'utf-8'), fill=color)
-            #draw.text(pos, word, fill=color)
         return img
 
     def recolor(self, random_state=None, color_func=None):
@@ -372,9 +417,11 @@ class WordCloud(object):
 
         if color_func is None:
             color_func = self.color_func
-        self.layout_ = [(word, font_size, position, orientation,
-                         color_func(word, font_size, position, orientation, random_state))
-                        for word, font_size, position, orientation, _ in self.layout_]
+        self.layout_ = [(word_freq, font_size, position, orientation,
+                         color_func(word=word_freq[0], font_size=font_size,
+                                    position=position, orientation=orientation,
+                                    random_state=random_state, font_path=self.font_path))
+                        for word_freq, font_size, position, orientation, _ in self.layout_]
         return self
 
     def to_file(self, filename):
