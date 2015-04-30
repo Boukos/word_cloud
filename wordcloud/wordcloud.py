@@ -1,3 +1,4 @@
+# -*- coding: UTF-8 -*-
 # Author: Andreas Christian Mueller <amueller@ais.uni-bonn.de>
 # (c) 2012
 # Modified by: Paul Nechifor <paul@nechifor.net>
@@ -201,8 +202,11 @@ class WordCloud(object):
                 break
 
             x, y = np.array(result) + self.margin // 2
+
             # actually draw the text
-            draw.text((y, x), word, fill="white")
+            # support utf-8
+            draw.text((y, x), unicode(word, 'utf-8'), fill="white")
+            # draw.text((y, x), word, fill="white")
             positions.append((x, y))
             orientations.append(orientation)
             font_sizes.append(font_size)
@@ -256,7 +260,7 @@ class WordCloud(object):
         d = {}
         flags = re.UNICODE if sys.version < '3' and \
                                 type(text) is unicode else 0
-        for word in re.findall(r"\w[\w']*", text, flags=flags):
+        for word in re.findall(r"\S[\S']*", text, flags=flags):
             if word.isdigit():
                 continue
 
@@ -329,12 +333,18 @@ class WordCloud(object):
         img = Image.new("RGB", (width * self.scale, height * self.scale), self.background_color)
         draw = ImageDraw.Draw(img)
         for (word, count), font_size, position, orientation, color in self.layout_:
+
             font = ImageFont.truetype(self.font_path, font_size * self.scale)
+            print 'font_size: ', font_size
+            print 'self.scale: ', self.scale
             transposed_font = ImageFont.TransposedFont(font,
                                                        orientation=orientation)
+            print transposed_font
             draw.setfont(transposed_font)
             pos = (position[1] * self.scale, position[0] * self.scale)
-            draw.text(pos, word, fill=color)
+            # support utf-8
+            draw.text(pos, unicode(word, 'utf-8'), fill=color)
+            #draw.text(pos, word, fill=color)
         return img
 
     def recolor(self, random_state=None, color_func=None):
